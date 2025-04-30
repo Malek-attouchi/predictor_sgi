@@ -5,6 +5,7 @@ import pandas as pd
 from db_config import DATABASE_URL, Base, engine
 import logging
 from pandas import Timestamp
+from sqlalchemy.ext.declarative import declarative_base
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
