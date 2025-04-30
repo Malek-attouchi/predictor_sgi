@@ -30,16 +30,9 @@ import {
   AppBar,
   Toolbar,
   IconButton,
-  useMediaQuery,
-  Drawer,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  Divider,
+  Tooltip,
   Chip,
   Avatar,
-  Tooltip,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -48,10 +41,16 @@ import {
   Settings as SettingsIcon,
   Refresh as RefreshIcon,
   Info as InfoIcon,
+  CalendarToday as CalendarIcon,
+  AccessTime as TimeIcon,
+  TrendingUp as TrendingUpIcon,
+  Speed as SpeedIcon,
+  Storage as StorageIcon,
 } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { TimePicker } from '@mui/x-date-pickers/TimePicker';
 import dayjs, { Dayjs } from 'dayjs';
 import axios from 'axios';
 import { Line } from 'react-chartjs-2';
@@ -80,23 +79,23 @@ ChartJS.register(
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#3f51b5',
-      light: '#757de8',
-      dark: '#002984',
+      main: '#FF9800',
+      light: '#FFB74D',
+      dark: '#F57C00',
     },
     secondary: {
-      main: '#f50057',
-      light: '#ff4081',
-      dark: '#c51162',
+      main: '#FF5722',
+      light: '#FF8A65',
+      dark: '#E64A19',
     },
     background: {
       default: '#f5f5f5',
       paper: '#ffffff',
     },
     success: {
-      main: '#4caf50',
-      light: '#81c784',
-      dark: '#388e3c',
+      main: '#4CAF50',
+      light: '#81C784',
+      dark: '#388E3C',
     },
   },
   typography: {
@@ -169,8 +168,6 @@ function App() {
   const [trafficData, setTrafficData] = useState<any[]>([]);
   const [loadingTrafficData, setLoadingTrafficData] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState(0);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const handleDateChange = (newDate: Dayjs | null) => {
     setDate(newDate);
@@ -182,10 +179,6 @@ function App() {
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
-  };
-
-  const toggleDrawer = () => {
-    setDrawerOpen(!drawerOpen);
   };
 
   const handlePredict = async () => {
@@ -258,29 +251,50 @@ function App() {
 
   const chartOptions = {
     responsive: true,
+    maintainAspectRatio: false,
     plugins: {
       legend: {
         position: 'top' as const,
+        labels: {
+          font: {
+            size: 14,
+            family: 'Poppins',
+          },
+          padding: 20,
+        },
       },
       title: {
         display: true,
         text: 'Prédictions de trafic journalières',
         font: {
-          size: 16,
-          weight: 'bold',
+          size: 18,
+          weight: 'bold' as const,
+          family: 'Poppins',
+        },
+        padding: {
+          top: 20,
+          bottom: 20,
         },
       },
       tooltip: {
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        backgroundColor: 'rgba(255, 152, 0, 0.9)',
         titleFont: {
           size: 14,
-          weight: 'bold',
+          weight: 'bold' as const,
+          family: 'Poppins',
         },
         bodyFont: {
-          size: 12,
+          size: 13,
+          family: 'Poppins',
         },
-        padding: 10,
+        padding: 12,
         cornerRadius: 8,
+        displayColors: false,
+        callbacks: {
+          label: function(context: any) {
+            return `Trafic: ${formatTraffic(context.raw)}`;
+          }
+        }
       },
     },
     scales: {
@@ -290,11 +304,18 @@ function App() {
           display: true,
           text: 'Trafic (bits/s)',
           font: {
-            weight: 'bold',
+            weight: 'bold' as const,
+            size: 14,
+            family: 'Poppins',
           },
         },
         grid: {
           color: 'rgba(0, 0, 0, 0.05)',
+        },
+        ticks: {
+          font: {
+            family: 'Poppins',
+          },
         },
       },
       x: {
@@ -302,57 +323,42 @@ function App() {
           display: true,
           text: 'Heure',
           font: {
-            weight: 'bold',
+            weight: 'bold' as const,
+            size: 14,
+            family: 'Poppins',
           },
         },
         grid: {
           color: 'rgba(0, 0, 0, 0.05)',
         },
+        ticks: {
+          font: {
+            family: 'Poppins',
+          },
+        },
       },
     },
   };
 
-  const drawer = (
-    <Box sx={{ width: 250 }}>
-      <Toolbar />
-      <Divider />
-      <List>
-        <ListItem button>
-          <ListItemIcon>
-            <TimelineIcon color="primary" />
-          </ListItemIcon>
-          <ListItemText primary="Prédictions" />
-        </ListItem>
-        <ListItem button>
-          <ListItemIcon>
-            <HistoryIcon color="primary" />
-          </ListItemIcon>
-          <ListItemText primary="Historique" />
-        </ListItem>
-        <ListItem button>
-          <ListItemIcon>
-            <SettingsIcon color="primary" />
-          </ListItemIcon>
-          <ListItemText primary="Paramètres" />
-        </ListItem>
-      </List>
-    </Box>
-  );
+  const calculateStability = (data: any[]) => {
+    if (data.length < 2) return 0;
+    
+    const variations = [];
+    for (let i = 1; i < data.length; i++) {
+      const variation = Math.abs(data[i].value - data[i-1].value) / data[i-1].value;
+      variations.push(variation);
+    }
+    
+    const avgVariation = variations.reduce((a, b) => a + b, 0) / variations.length;
+    return Math.round((1 - avgVariation) * 100);
+  };
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
           <Toolbar>
-            <IconButton
-              color="inherit"
-              edge="start"
-              onClick={toggleDrawer}
-              sx={{ mr: 2 }}
-            >
-              <MenuIcon />
-            </IconButton>
             <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
               Traffic Predictor
             </Typography>
@@ -368,23 +374,6 @@ function App() {
             </Tooltip>
           </Toolbar>
         </AppBar>
-
-        <Drawer
-          variant={isMobile ? "temporary" : "permanent"}
-          open={drawerOpen}
-          onClose={toggleDrawer}
-          sx={{
-            width: 250,
-            flexShrink: 0,
-            '& .MuiDrawer-paper': {
-              width: 250,
-              boxSizing: 'border-box',
-            },
-          }}
-        >
-          {drawer}
-        </Drawer>
-
         <Box component="main" sx={{ flexGrow: 1, p: 3, mt: 8 }}>
           <Container maxWidth="lg">
             <Fade in timeout={500}>
@@ -397,7 +386,20 @@ function App() {
                 }}
               >
                 <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-                  <Tabs value={activeTab} onChange={handleTabChange}>
+                  <Tabs 
+                    value={activeTab} 
+                    onChange={handleTabChange}
+                    centered
+                    sx={{
+                      '& .MuiTab-root': {
+                        minWidth: 120,
+                        fontWeight: 'bold',
+                      },
+                      '& .Mui-selected': {
+                        color: 'primary.main',
+                      },
+                    }}
+                  >
                     <Tab label="Prédiction" />
                     <Tab label="Historique" />
                     <Tab label="Statistiques" />
@@ -429,22 +431,107 @@ function App() {
                             </Select>
                           </FormControl>
 
-                          <LocalizationProvider dateAdapter={AdapterDayjs}>
-                            <DateTimePicker
-                              label="Sélectionnez une date et heure"
-                              value={date}
-                              onChange={handleDateChange}
-                              format="DD/MM/YYYY HH:mm"
-                              sx={{
-                                width: '100%',
-                                '& .MuiOutlinedInput-root': {
-                                  '&:hover fieldset': {
-                                    borderColor: 'primary.main',
-                                  },
-                                },
-                              }}
-                            />
-                          </LocalizationProvider>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 3 }}>
+                            <Typography variant="subtitle1" sx={{ 
+                              color: 'primary.main',
+                              fontWeight: 'bold',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1
+                            }}>
+                              <CalendarIcon /> Sélection de la date et heure
+                            </Typography>
+                            
+                            <Box sx={{ 
+                              display: 'flex', 
+                              gap: 2,
+                              flexDirection: { xs: 'column', sm: 'row' }
+                            }}>
+                              <LocalizationProvider dateAdapter={AdapterDayjs}>
+                                <DatePicker
+                                  label="Date"
+                                  value={date}
+                                  onChange={(newDate) => {
+                                    if (newDate && date) {
+                                      const currentTime = date.format('HH:mm');
+                                      const newDateTime = newDate.format('YYYY-MM-DD') + ' ' + currentTime;
+                                      setDate(dayjs(newDateTime, 'YYYY-MM-DD HH:mm'));
+                                    } else {
+                                      setDate(newDate);
+                                    }
+                                  }}
+                                  format="DD/MM/YYYY"
+                                  slots={{
+                                    openPickerIcon: CalendarIcon,
+                                  }}
+                                  sx={{
+                                    flex: 1,
+                                    '& .MuiOutlinedInput-root': {
+                                      '&:hover fieldset': {
+                                        borderColor: 'primary.main',
+                                      },
+                                      '&.Mui-focused fieldset': {
+                                        borderColor: 'primary.main',
+                                      },
+                                    },
+                                    '& .MuiInputLabel-root': {
+                                      color: 'text.secondary',
+                                      '&.Mui-focused': {
+                                        color: 'primary.main',
+                                      },
+                                    },
+                                    '& .MuiIconButton-root': {
+                                      color: 'primary.main',
+                                      '&:hover': {
+                                        backgroundColor: 'rgba(255, 152, 0, 0.08)',
+                                      },
+                                    },
+                                  }}
+                                />
+                                
+                                <TimePicker
+                                  label="Heure"
+                                  value={date}
+                                  onChange={(newTime) => {
+                                    if (newTime && date) {
+                                      const currentDate = date.format('YYYY-MM-DD');
+                                      const newDateTime = currentDate + ' ' + newTime.format('HH:mm');
+                                      setDate(dayjs(newDateTime, 'YYYY-MM-DD HH:mm'));
+                                    } else {
+                                      setDate(newTime);
+                                    }
+                                  }}
+                                  format="HH:mm"
+                                  slots={{
+                                    openPickerIcon: TimeIcon,
+                                  }}
+                                  sx={{
+                                    flex: 1,
+                                    '& .MuiOutlinedInput-root': {
+                                      '&:hover fieldset': {
+                                        borderColor: 'primary.main',
+                                      },
+                                      '&.Mui-focused fieldset': {
+                                        borderColor: 'primary.main',
+                                      },
+                                    },
+                                    '& .MuiInputLabel-root': {
+                                      color: 'text.secondary',
+                                      '&.Mui-focused': {
+                                        color: 'primary.main',
+                                      },
+                                    },
+                                    '& .MuiIconButton-root': {
+                                      color: 'primary.main',
+                                      '&:hover': {
+                                        backgroundColor: 'rgba(255, 152, 0, 0.08)',
+                                      },
+                                    },
+                                  }}
+                                />
+                              </LocalizationProvider>
+                            </Box>
+                          </Box>
 
                           <Button
                             variant="contained"
@@ -571,22 +658,14 @@ function App() {
                             <TableHead>
                               <TableRow>
                                 <TableCell>Timestamp</TableCell>
-                                <TableCell>Valeur</TableCell>
-                                <TableCell>Source</TableCell>
+                                <TableCell align="right">Valeur</TableCell>
                               </TableRow>
                             </TableHead>
                             <TableBody>
                               {trafficData.map((data, index) => (
                                 <TableRow key={index}>
                                   <TableCell>{data.timestamp}</TableCell>
-                                  <TableCell>{formatTraffic(data.value)}</TableCell>
-                                  <TableCell>
-                                    <Chip
-                                      label={data.source}
-                                      color={data.source === 'capture' ? 'primary' : 'secondary'}
-                                      size="small"
-                                    />
-                                  </TableCell>
+                                  <TableCell align="right">{formatTraffic(data.value)}</TableCell>
                                 </TableRow>
                               ))}
                             </TableBody>
@@ -606,31 +685,108 @@ function App() {
                             <TimelineIcon />
                           </Avatar>
                           <Typography variant="h6">
-                            Statistiques
+                            Statistiques du Trafic
                           </Typography>
                         </Box>
                         <Grid container spacing={3}>
-                          <Grid item xs={12} md={4}>
-                            <Card sx={{ bgcolor: 'primary.light', color: 'white' }}>
+                          <Grid item xs={12} md={3}>
+                            <Card sx={{ 
+                              bgcolor: 'primary.light', 
+                              color: 'white',
+                              transition: 'transform 0.3s ease',
+                              '&:hover': {
+                                transform: 'translateY(-5px)',
+                              }
+                            }}>
                               <CardContent>
-                                <Typography variant="h6">Total des données</Typography>
-                                <Typography variant="h4">{trafficData.length}</Typography>
+                                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                  <TimelineIcon sx={{ mr: 1 }} />
+                                  <Typography variant="h6">Trafic Moyen</Typography>
+                                </Box>
+                                <Typography variant="h4">
+                                  {trafficData.length > 0 
+                                    ? formatTraffic(trafficData.reduce((acc, curr) => acc + curr.value, 0) / trafficData.length)
+                                    : '0 b/s'}
+                                </Typography>
+                                <Typography variant="body2" sx={{ mt: 1 }}>
+                                  Moyenne sur les dernières 24h
+                                </Typography>
                               </CardContent>
                             </Card>
                           </Grid>
-                          <Grid item xs={12} md={4}>
-                            <Card sx={{ bgcolor: 'secondary.light', color: 'white' }}>
+                          
+                          <Grid item xs={12} md={3}>
+                            <Card sx={{ 
+                              bgcolor: 'secondary.light', 
+                              color: 'white',
+                              transition: 'transform 0.3s ease',
+                              '&:hover': {
+                                transform: 'translateY(-5px)',
+                              }
+                            }}>
                               <CardContent>
-                                <Typography variant="h6">Prédictions</Typography>
-                                <Typography variant="h4">{dailyPredictions.length}</Typography>
+                                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                  <TrendingUpIcon sx={{ mr: 1 }} />
+                                  <Typography variant="h6">Pic de Trafic</Typography>
+                                </Box>
+                                <Typography variant="h4">
+                                  {trafficData.length > 0 
+                                    ? formatTraffic(Math.max(...trafficData.map(d => d.value)))
+                                    : '0 b/s'}
+                                </Typography>
+                                <Typography variant="body2" sx={{ mt: 1 }}>
+                                  Plus haut niveau atteint
+                                </Typography>
                               </CardContent>
                             </Card>
                           </Grid>
-                          <Grid item xs={12} md={4}>
-                            <Card sx={{ bgcolor: 'success.light', color: 'white' }}>
+                          
+                          <Grid item xs={12} md={3}>
+                            <Card sx={{ 
+                              bgcolor: 'success.light', 
+                              color: 'white',
+                              transition: 'transform 0.3s ease',
+                              '&:hover': {
+                                transform: 'translateY(-5px)',
+                              }
+                            }}>
                               <CardContent>
-                                <Typography variant="h6">Précision</Typography>
-                                <Typography variant="h4">95%</Typography>
+                                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                  <SpeedIcon sx={{ mr: 1 }} />
+                                  <Typography variant="h6">Stabilité</Typography>
+                                </Box>
+                                <Typography variant="h4">
+                                  {trafficData.length > 0 
+                                    ? calculateStability(trafficData) + '%'
+                                    : '0%'}
+                                </Typography>
+                                <Typography variant="body2" sx={{ mt: 1 }}>
+                                  Taux de variation moyen
+                                </Typography>
+                              </CardContent>
+                            </Card>
+                          </Grid>
+
+                          <Grid item xs={12} md={3}>
+                            <Card sx={{ 
+                              bgcolor: 'info.light', 
+                              color: 'white',
+                              transition: 'transform 0.3s ease',
+                              '&:hover': {
+                                transform: 'translateY(-5px)',
+                              }
+                            }}>
+                              <CardContent>
+                                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                  <StorageIcon sx={{ mr: 1 }} />
+                                  <Typography variant="h6">Données</Typography>
+                                </Box>
+                                <Typography variant="h4">
+                                  {trafficData.length}
+                                </Typography>
+                                <Typography variant="body2" sx={{ mt: 1 }}>
+                                  Nombre total d'enregistrements
+                                </Typography>
                               </CardContent>
                             </Card>
                           </Grid>
