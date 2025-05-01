@@ -120,12 +120,15 @@ class TrafficPredictionApp:
                 df['timestamp'] = pd.to_datetime(df['timestamp'])
                 
                 def convert_to_bits(value):
-                    if isinstance(value, str):
-                        if 'kb/s' in value:
-                            return float(value.replace('kb/s', '').strip()) * 1000
-                        elif 'b/s' in value:
-                            return float(value.replace('b/s', '').strip())
-                    return float(value)
+                 if isinstance(value, str):
+                    value = value.lower().strip()
+                    if 'mb/s' in value:
+                        return float(value.replace('mb/s', '').strip()) * 1_000_000
+                    elif 'kb/s' in value:
+                        return float(value.replace('kb/s', '').strip()) * 1_000
+                    elif 'b/s' in value:
+                          return float(value.replace('b/s', '').strip())
+                 return float(value)
                 
                 df['value'] = df['value'].apply(convert_to_bits)
                 

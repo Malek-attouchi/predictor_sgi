@@ -1,124 +1,165 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
+import xgboost as xgb
 from datetime import datetime
+from database import TrafficDatabase
+import pickle
+import os
 
-def convert_to_bits(value):
-    if isinstance(value, str):
-        if 'kb/s' in value:
-            return float(value.replace('kb/s', '').strip()) * 1000
-        elif 'mb/s' in value:
-            return float(value.replace('Mb/s', '').strip()) * 1000000
-        elif 'b/s' in value:
-            return float(value.replace('b/s', '').strip())
-    return float(value)
-
-def load_data(file_path=None):
-    if file_path:
-        df = pd.read_csv(file_path)
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        df['value'] = df['value'].apply(convert_to_bits)
+def load_or_train_model():
+    """Charge le modèle existant ou en entraîne un nouveau si nécessaire"""
+    model_path = 'models/traffic_model.pkl'
+    scaler_path = 'models/scaler.pkl'
+    
+    if os.path.exists(model_path) and os.path.exists(scaler_path):
+        # Charger le modèle et le scaler existants
+        with open(model_path, 'rb') as f:
+            model = pickle.load(f)
+        with open(scaler_path, 'rb') as f:
+            scaler = pickle.load(f)
     else:
-        data = """2025-02-17 12:00:00,695 b/s
-2025-02-17 13:00:00,589 b/s
-2025-02-17 14:00:00,2.64 kb/s
-2025-02-17 15:00:00,697 b/s
-2025-02-17 16:00:00,599 b/s
-2025-02-17 17:00:00,682 b/s
-2025-02-17 18:00:00,550 b/s
-2025-02-17 19:00:00,549 b/s
-2025-02-17 20:00:00,548 b/s
-2025-02-17 21:00:00,550 b/s
-2025-02-17 22:00:00,544 b/s
-2025-02-17 23:00:00,569 b/s
-2025-02-18 00:00:00,541 b/s
-2025-02-18 01:00:00,542 b/s
-2025-02-18 02:00:00,544 b/s
-2025-02-18 03:00:00,537 b/s
-2025-02-18 04:00:00,541 b/s
-2025-02-18 05:00:00,551 b/s
-2025-02-18 06:00:00,541 b/s
-2025-02-18 07:00:00,544 b/s
-2025-02-18 08:00:00,543 b/s
-2025-02-18 09:00:00,559 b/s
-2025-02-18 10:00:00,24.6 kb/s
-2025-02-18 11:00:00,558 b/s
-2025-02-18 12:00:00,556 b/s
-2025-02-18 13:00:00,574 b/s
-2025-02-18 14:00:00,535 b/s
-2025-02-18 15:00:00,44.5 kb/s
-2025-02-18 16:00:00,5.63 kb/s
-2025-02-18 17:00:00,3.00 kb/s
-2025-02-18 18:00:00,1.16 kb/s
-2025-02-18 19:00:00,1.34 kb/s
-2025-02-18 20:00:00,1.86 kb/s
-2025-02-18 21:00:00,939 b/s
-2025-02-18 22:00:00,14.2 kb/s
-2025-02-18 23:00:00,1.23 kb/s
-2025-02-19 00:00:00,1.18 kb/s
-2025-02-19 01:00:00,4.99 kb/s
-2025-02-19 02:00:00,735 b/s
-2025-02-19 03:00:00,1.09 kb/s
-2025-02-19 04:00:00,6.41 kb/s
-2025-02-19 05:00:00,2.76 kb/s
-2025-02-19 06:00:00,1.65 kb/s
-2025-02-19 07:00:00,1.40 kb/s
-2025-02-19 08:00:00,1.48 kb/s
-2025-02-19 09:00:00,1.88 kb/s
-2025-02-19 10:00:00,2.40 kb/s
-2025-02-19 11:00:00,11.9 kb/s
-2025-02-19 12:00:00,1.81 kb/s
-2025-02-19 13:00:00,3.02 kb/s
-2025-02-19 14:00:00,859 b/s
-2025-02-19 15:00:00,1.08 kb/s
-2025-02-19 16:00:00,1.18 kb/s
-2025-02-19 17:00:00,2.11 kb/s
-2025-02-19 18:00:00,973 b/s
-2025-02-19 19:00:00,1.63 kb/s
-2025-02-19 20:00:00,668 b/s
-2025-02-19 21:00:00,589 b/s
-2025-02-19 22:00:00,1.13 kb/s
-2025-02-19 23:00:00,2.43 kb/s
-2025-02-20 00:00:00,16.5 kb/s"""
-        lines = [line.strip() for line in data.split('\n')]
-        df = pd.DataFrame([line.split(',') for line in lines], columns=['timestamp', 'value'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        df['value'] = df['value'].apply(convert_to_bits)
-    return df
+        # Créer le dossier models s'il n'existe pas
+        os.makedirs('models', exist_ok=True)
+        
+        # Entraîner un nouveau modèle
+        db = TrafficDatabase()
+        df = db.get_all_traffic_data()
+        df = prepare_data(df)
+        
+        X = df.drop(['timestamp', 'value'], axis=1)
+        y = df['value']
+        
+        # Normaliser les données
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Entraîner le modèle
+        dtrain = xgb.DMatrix(X_scaled, label=y)
+        params = {
+            'objective': 'reg:squarederror',
+            'learning_rate': 0.05,
+            'max_depth': 8,
+            'min_child_weight': 2,
+            'subsample': 0.9,
+            'colsample_bytree': 0.9,
+            'gamma': 0.1,
+            'reg_alpha': 0.1,
+            'reg_lambda': 1,
+            'random_state': 42
+        }
+        model = xgb.train(params, dtrain, num_boost_round=500)
+        
+        # Sauvegarder le modèle et le scaler
+        with open(model_path, 'wb') as f:
+            pickle.dump(model, f)
+        with open(scaler_path, 'wb') as f:
+            pickle.dump(scaler, f)
+    
+    return model, scaler
 
-def train_model(df):
+def prepare_data(df):
+    """Prépare les données pour la prédiction"""
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    
+    # Features temporelles
     df['hour'] = df['timestamp'].dt.hour
     df['day_of_week'] = df['timestamp'].dt.dayofweek
     df['day_of_month'] = df['timestamp'].dt.day
     df['month'] = df['timestamp'].dt.month
+    df['year'] = df['timestamp'].dt.year
+    df['quarter'] = df['timestamp'].dt.quarter
+    
+    # Features supplémentaires
+    df['is_weekend'] = df['day_of_week'].isin([5, 6]).astype(int)
+    df['is_month_start'] = (df['day_of_month'] == 1).astype(int)
+    df['is_month_end'] = (df['day_of_month'] == df['timestamp'].dt.days_in_month).astype(int)
+    df['is_peak_hour'] = ((df['hour'] >= 8) & (df['hour'] <= 20)).astype(int)
+    df['is_night'] = ((df['hour'] >= 22) | (df['hour'] <= 5)).astype(int)
+    
+    # Features cycliques
+    df['hour_sin'] = np.sin(2 * np.pi * df['hour']/24)
+    df['hour_cos'] = np.cos(2 * np.pi * df['hour']/24)
+    df['day_sin'] = np.sin(2 * np.pi * df['day_of_week']/7)
+    df['day_cos'] = np.cos(2 * np.pi * df['day_of_week']/7)
+    df['month_sin'] = np.sin(2 * np.pi * df['month']/12)
+    df['month_cos'] = np.cos(2 * np.pi * df['month']/12)
+    
+    return df
 
-    X = df[['hour', 'day_of_week', 'day_of_month', 'month']]
-    y = df['value']
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
-    model.fit(X_train_scaled, y_train)
-
-    return model, scaler
-
-def predict_traffic(model, scaler, date_str):
+def predict_traffic(date_str):
+    """
+    Prédit le trafic pour une date donnée
+    
+    Args:
+        date_str (str): Date au format 'DD/MM/YYYY HH:mm' ou 'YYYY-MM-DD HH:mm'
+    
+    Returns:
+        dict: Dictionnaire contenant la prédiction et les informations associées
+    """
     try:
-        date = datetime.strptime(date_str, '%d/%m/%Y')
-        features = np.array([[
-            date.hour,
-            date.weekday(),
-            date.day,
-            date.month
-        ]])
-        features_scaled = scaler.transform(features)
-        prediction = model.predict(features_scaled)[0]
-        return prediction
-    except ValueError:
-        return None
+        # Essayer différents formats de date
+        try:
+            date = datetime.strptime(date_str, '%d/%m/%Y %H:%M')
+        except ValueError:
+            try:
+                date = datetime.strptime(date_str, '%Y-%m-%d %H:%M')
+            except ValueError:
+                raise ValueError("Format de date invalide. Utilisez 'DD/MM/YYYY HH:mm' ou 'YYYY-MM-DD HH:mm'")
+        
+        # Créer un DataFrame avec la date
+        df = pd.DataFrame({'timestamp': [date]})
+        df = prepare_data(df)
+        
+        # Charger le modèle et le scaler
+        model, scaler = load_or_train_model()
+        
+        # Préparer les features pour la prédiction
+        X = df.drop('timestamp', axis=1)
+        X_scaled = scaler.transform(X)
+        
+        # Faire la prédiction
+        dtest = xgb.DMatrix(X_scaled)
+        prediction = model.predict(dtest)[0]
+        
+        # Formater la sortie
+        result = {
+            'date': date.strftime('%d/%m/%Y %H:%M'),
+            'prediction': prediction,
+            'prediction_formatted': format_traffic(prediction),
+            'features': {
+                'heure': date.hour,
+                'jour_semaine': ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'][date.weekday()],
+                'weekend': 'Oui' if df['is_weekend'].iloc[0] else 'Non',
+                'heure_de_pointe': 'Oui' if df['is_peak_hour'].iloc[0] else 'Non'
+            }
+        }
+        
+        return result
+        
+    except Exception as e:
+        return {'error': str(e)}
+
+def format_traffic(value):
+    """Formate la valeur du trafic en b/s, kb/s ou Mb/s"""
+    if value < 1000:
+        return f"{value:.2f} b/s"
+    elif value < 1000000:
+        return f"{value/1000:.2f} kb/s"
+    else:
+        return f"{value/1000000:.2f} Mb/s"
+
+if __name__ == "__main__":
+    # Exemple d'utilisation
+    date_test = "17/03/2024 14:30"
+    result = predict_traffic(date_test)
+    
+    if 'error' in result:
+        print(f"Erreur: {result['error']}")
+    else:
+        print("\n=== Prédiction de trafic ===")
+        print(f"Date: {result['date']}")
+        print(f"Trafic prédit: {result['prediction_formatted']}")
+        print("\nInformations complémentaires:")
+        for key, value in result['features'].items():
+            print(f"{key.replace('_', ' ').title()}: {value}")
